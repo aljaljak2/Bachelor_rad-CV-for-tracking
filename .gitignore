@@ -1,4 +1,4 @@
 venv/
 __pycache__/
 Detect_and_Track/yoloV5/__pycache__/
-yolov5.pt
+yolov5l.pt
