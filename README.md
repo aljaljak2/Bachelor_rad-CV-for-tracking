@@ -22,6 +22,14 @@ Our tracking module is built upon the **Deep SORT algorithm**, providing robust 
 
 The Deep SORT implementation is adapted from: [nwojke/deep_sort](https://github.com/nwojke/deep_sort)
 
+### 3 - Getting tracking dataframe
+
+after step 3 the tracking data of the TV footage is generated, and could by used to get whatever statistics and insights we want
+
+<div align="center">
+<img src="./readme_photos/init_dataframe.png" alt="Detection" width="500"/>
+</div>
+
 ---
 
 # Installation
