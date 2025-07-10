@@ -26,6 +26,7 @@ def detect_demo(path   = "./Data/Capture.JPG"):
     # cv2.imshow(img[player[1] - 30:player[3] + 30, player[0] - 30 :player[2] + 30, ::-1])
     plt.figure(figsize=(12, 8))
     plt.imshow(img[player[1] - 30:player[3] + 30, player[0] - 30 :player[2] + 30, :])
+    print("SADA BI TREBALO DA SE POKAZE")
     plt.show()
     return img, res
 
