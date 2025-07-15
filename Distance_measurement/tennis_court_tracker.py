@@ -2,6 +2,9 @@ import cv2
 import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN
+import urllib.request
+import os
+from collections import defaultdict
 
 class TennisCourtTracker:
     def __init__(self):
@@ -15,37 +18,301 @@ class TennisCourtTracker:
             (0, self.court_length)
         ]
 
+    def download_video(self, url, output_path="downloaded_video.mp4"):
+        """Download video from URL if it's a web URL"""
+        try:
+            if url.startswith(('http://', 'https://')):
+                print(f"[DEBUG] Downloading video from: {url}")
+                urllib.request.urlretrieve(url, output_path)
+                print(f"[DEBUG] Video downloaded to: {output_path}")
+                return output_path
+            else:
+                # Local file path
+                if os.path.exists(url):
+                    return url
+                else:
+                    raise FileNotFoundError(f"Local video file not found: {url}")
+        except Exception as e:
+            print(f"[ERROR] Failed to download video: {e}")
+            raise
+
+    def detect_corners_from_video(self, video_path, sample_interval=1.0, max_frames=30, debug=False):
+        """
+        Detect court corners from multiple frames in a video
+        
+        Args:
+            video_path: Path to video file or URL
+            sample_interval: Interval in seconds between frame samples
+            max_frames: Maximum number of frames to process
+            debug: Whether to show debug information
+        
+        Returns:
+            tuple: (average_corners, all_frame_corners, frame_info, representative_frame)
+        """
+        # Download video if it's a URL
+        if video_path.startswith(('http://', 'https://')):
+            video_path = self.download_video(video_path)
+        
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Could not open video: {video_path}")
+        
+        # Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / fps
+        
+        print(f"[DEBUG] Video info: {total_frames} frames, {fps:.2f} FPS, {duration:.2f}s duration")
+        
+        # Calculate frame sampling
+        frame_interval = int(fps * sample_interval)
+        frames_to_process = min(max_frames, int(duration / sample_interval))
+        
+        print(f"[DEBUG] Will process {frames_to_process} frames, sampling every {frame_interval} frames ({sample_interval}s)")
+        
+        all_frame_corners = []
+        frame_info = []
+        processed_count = 0
+        representative_frame = None
+        best_frame_score = 0
+        
+        for i in range(frames_to_process):
+            frame_number = int(i * frame_interval)  # Ensure it's a Python int
+            timestamp = frame_number / fps
+            
+            # Seek to the specific frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number)
+            ret, frame = cap.read()
+            
+            if not ret:
+                print(f"[WARNING] Could not read frame {frame_number}")
+                continue
+            
+            print(f"[DEBUG] Processing frame {frame_number} at {timestamp:.2f}s")
+            
+            # Detect corners in this frame
+            corners = self.detect_court_corners(frame, debug=False)
+            
+            frame_data = {
+                'frame_number': frame_number,
+                'timestamp': timestamp,
+                'corners_found': len(corners),
+                'corners': corners
+            }
+            
+            if len(corners) == 4:
+                all_frame_corners.append(corners)
+                frame_data['valid'] = True
+                processed_count += 1
+                print(f"[DEBUG] Frame {frame_number}: Found 4 corners [OK]")
+                
+                # Select representative frame (middle of the sequence with good corners)
+                if processed_count == max(1, len(all_frame_corners) // 2):
+                    representative_frame = frame.copy()
+                    print(f"[DEBUG] Selected frame {frame_number} as representative frame")
+                    
+            else:
+                frame_data['valid'] = False
+                print(f"[DEBUG] Frame {frame_number}: Found {len(corners)} corners [FAILED]")
+            
+            frame_info.append(frame_data)
+            
+            # Save debug image for first few frames if debug is enabled
+            if debug and i < 5:
+                debug_frame = frame.copy()
+                if corners:
+                    self._draw_corners_on_frame(debug_frame, corners)
+                output_path = f'debug_frame_{frame_number}.jpg'
+                cv2.imwrite(output_path, debug_frame)
+                print(f"[DEBUG] Saved debug frame to: {output_path}")
+        
+        cap.release()
+        
+        print(f"[DEBUG] Successfully processed {processed_count}/{frames_to_process} frames")
+        
+        if processed_count == 0:
+            print("[ERROR] No valid corners found in any frame")
+            return None, all_frame_corners, frame_info, None
+        
+        # Calculate average corners
+        average_corners = self._calculate_average_corners(all_frame_corners)
+        
+        # If no representative frame was selected, use the first valid frame
+        if representative_frame is None and all_frame_corners:
+            print("[DEBUG] No representative frame selected, using first valid frame")
+            # Get the first valid frame
+            cap = cv2.VideoCapture(video_path)
+            for info in frame_info:
+                if info['valid']:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, info['frame_number'])
+                    ret, representative_frame = cap.read()
+                    if ret:
+                        break
+            cap.release()
+        
+        # Clean up downloaded video if it was a URL
+        if video_path.startswith('downloaded_video'):
+            try:
+                os.remove(video_path)
+                print(f"[DEBUG] Cleaned up downloaded video: {video_path}")
+            except:
+                pass
+        
+        return average_corners, all_frame_corners, frame_info, representative_frame
+
+    def _calculate_average_corners(self, all_frame_corners):
+        """Calculate average corner positions from multiple frames"""
+        if not all_frame_corners:
+            return []
+        
+        print(f"[DEBUG] Calculating average corners from {len(all_frame_corners)} valid frames")
+        
+        # Group corners by their likely position (using simple clustering)
+        corner_groups = [[] for _ in range(4)]
+        
+        for frame_corners in all_frame_corners:
+            # Order corners consistently for this frame
+            ordered_corners = self.get_ordered_corners(frame_corners)
+            
+            # Add to respective groups
+            for i, corner in enumerate(ordered_corners):
+                corner_groups[i].append(corner)
+        
+        # Calculate average for each corner group
+        average_corners = []
+        corner_names = ["Top-Left", "Top-Right", "Bottom-Right", "Bottom-Left"]
+        
+        for i, (group, name) in enumerate(zip(corner_groups, corner_names)):
+            if group:
+                # Convert to regular Python floats to avoid numpy compatibility issues
+                x_coords = [float(corner[0]) for corner in group]
+                y_coords = [float(corner[1]) for corner in group]
+                
+                # Use numpy for statistics instead of statistics module
+                avg_x = np.mean(x_coords)
+                avg_y = np.mean(y_coords)
+                std_x = np.std(x_coords) if len(x_coords) > 1 else 0
+                std_y = np.std(y_coords) if len(y_coords) > 1 else 0
+                
+                average_corners.append((avg_x, avg_y))
+                print(f"[DEBUG] {name}: ({avg_x:.1f}, {avg_y:.1f}) +/- ({std_x:.1f}, {std_y:.1f})")
+        
+        return average_corners
+
+    def visualize_average_corners(self, frame, average_corners, output_path="average_corners_visualization.jpg", show_image=True):
+        """
+        Visualize average corners on a representative frame
+        
+        Args:
+            frame: The frame to draw on
+            average_corners: List of average corner coordinates
+            output_path: Path to save the visualization
+            show_image: Whether to display the image using cv2.imshow
+        """
+        if frame is None:
+            print("[ERROR] No frame provided for visualization")
+            return
+        
+        if not average_corners or len(average_corners) != 4:
+            print(f"[ERROR] Invalid average corners: expected 4, got {len(average_corners) if average_corners else 0}")
+            return
+        
+        # Create a copy of the frame for visualization
+        vis_frame = frame.copy()
+        
+        # Draw the average corners
+        self._draw_corners_on_frame(vis_frame, average_corners)
+        
+        # Add additional information
+        cv2.putText(vis_frame, 'AVERAGE CORNERS FROM MULTIPLE FRAMES', (10, 110), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        
+        # Add corner coordinates as text
+        ordered_corners = self.get_ordered_corners(average_corners)
+        corner_labels = ['TL', 'TR', 'BR', 'BL']
+        for i, (corner, label) in enumerate(zip(ordered_corners, corner_labels)):
+            coord_text = f'{label}: ({corner[0]:.1f}, {corner[1]:.1f})'
+            cv2.putText(vis_frame, coord_text, (10, 150 + i * 25), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        
+        # Save the visualization
+        try:
+            cv2.imwrite(output_path, vis_frame)
+            print(f"[DEBUG] Average corners visualization saved to: {output_path}")
+        except Exception as e:
+            print(f"[ERROR] Failed to save visualization: {e}")
+        
+        # Display the image if requested
+        if show_image:
+            try:
+                cv2.imshow('Average Tennis Court Corners', vis_frame)
+                print("[DEBUG] Press any key to close the image window...")
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
+            except Exception as e:
+                print(f"[WARNING] Could not display image: {e}")
+                print("Image saved to file instead.")
+
     def detect_court_corners(self, frame, debug=False):
-        print("[DEBUG] Converting to grayscale...")
+        """Original corner detection method for single frame"""
+        if debug:
+            print("[DEBUG] Converting to grayscale...")
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        print("[DEBUG] Applying Gaussian blur...")
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-        print("[DEBUG] Performing Canny edge detection...")
         edges = cv2.Canny(blurred, 50, 150, apertureSize=3)
-        print("[DEBUG] Running Hough Line Transform...")
         lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=80, minLineLength=100, maxLineGap=50)
-        debug_img = frame.copy()
+        
         h, w = frame.shape[:2]
         if lines is None:
-            print("[DEBUG] No lines detected.")
             return []
-        print(f"[DEBUG] Number of lines detected: {len(lines)}")
+        
         sideline_segments = self._find_sideline_segments(lines, w, h)
         if len(sideline_segments) < 2:
-            print("[DEBUG] Not enough sideline segments found.")
             return []
-        left_sideline, right_sideline = self._group_sideline_segments(sideline_segments, w, debug_img)
+        
+        left_sideline, right_sideline = self._group_sideline_segments(sideline_segments, w, frame.copy())
         if not left_sideline or not right_sideline:
-            print("[DEBUG] Could not identify both sidelines.")
             return []
-        corners = self._find_corners_by_line_tracing(left_sideline, right_sideline, debug_img, h, w)
-        if debug:
-            print("[DEBUG] Displaying image with detected sidelines and corners...")
-            cv2.imshow('Tennis Court Detection', debug_img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-        print(f"[DEBUG] Found {len(corners)} corners: {corners}")
+        
+        corners = self._find_corners_by_line_tracing(left_sideline, right_sideline, frame.copy(), h, w)
+        
         return corners
+
+    def _draw_corners_on_frame(self, frame, corners):
+        """Draw detected corners on the frame with labels"""
+        if len(corners) != 4:
+            # If we don't have exactly 4 corners, just draw them as red circles
+            for i, corner in enumerate(corners):
+                x, y = int(corner[0]), int(corner[1])
+                cv2.circle(frame, (x, y), 8, (0, 0, 255), -1)  # Red filled circle
+                cv2.putText(frame, f'C{i+1}', (x + 10, y - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        else:
+            # Order corners and draw them with proper labels
+            ordered_corners = self.get_ordered_corners(corners)
+            corner_labels = ['TL', 'TR', 'BR', 'BL']  # Top-Left, Top-Right, Bottom-Right, Bottom-Left
+            colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]  # Blue, Green, Red, Cyan
+            
+            for i, (corner, label, color) in enumerate(zip(ordered_corners, corner_labels, colors)):
+                x, y = int(corner[0]), int(corner[1])
+                cv2.circle(frame, (x, y), 8, color, -1)  # Filled circle
+                cv2.circle(frame, (x, y), 12, color, 2)   # Outer circle
+                cv2.putText(frame, label, (x + 15, y - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                
+            # Draw lines connecting the corners to show the court outline
+            for i in range(4):
+                pt1 = (int(ordered_corners[i][0]), int(ordered_corners[i][1]))
+                pt2 = (int(ordered_corners[(i+1)%4][0]), int(ordered_corners[(i+1)%4][1]))
+                cv2.line(frame, pt1, pt2, (255, 255, 255), 2)  # White lines
+        
+        # Add title
+        cv2.putText(frame, 'Tennis Court Corners Detection', (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        
+        # Add corner count info
+        cv2.putText(frame, f'Corners found: {len(corners)}/4', (10, 70), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     def _find_sideline_segments(self, lines, img_width, img_height):
         sideline_segments = []
@@ -78,7 +345,6 @@ class TennisCourtTracker:
                     'top_point': (x1, y1) if y1 < y2 else (x2, y2),
                     'bottom_point': (x1, y1) if y1 > y2 else (x2, y2)
                 })
-        print(f"[DEBUG] Found {len(sideline_segments)} potential sideline segments")
         return sideline_segments
 
     def _group_sideline_segments(self, segments, img_width, debug_img):
@@ -243,7 +509,7 @@ class TennisCourtTracker:
                 'FilteredFrames': filtered_count
             })
         return pd.DataFrame(distances)
-
+    '''
     def calculate_ball_distance(self, df, x_col='X_court', y_col='Y_court', class_col='Class', frame_col='frame'):
         ball = df[df[class_col] == 'Ball'].copy()
         if ball.empty or len(ball) < 2:
@@ -255,6 +521,212 @@ class TennisCourtTracker:
         max_ball_speed_per_frame = 2.0
         valid_distances = frame_distances[frame_distances <= max_ball_speed_per_frame]
         return np.sum(valid_distances)
+    '''
+    def calculate_ball_distance_improved(self, df, x_col='X_court', y_col='Y_court', class_col='Class', frame_col='frame', fps=30.0):
+        """
+        Improved ball distance calculation with temporal awareness and trajectory estimation
+
+        Args:
+            df: DataFrame with tracking data
+            x_col, y_col: Column names for court coordinates
+            class_col: Column name for object classification
+            frame_col: Column name for frame numbers
+            fps: Video frame rate (frames per second)
+
+        Returns:
+            dict: Contains total distance, average speed, max speed, and trajectory info
+        """
+        ball_data = df[df[class_col] == 'Ball'].copy()
+
+        if ball_data.empty or len(ball_data) < 2:
+            return {
+                'total_distance': 0.0,
+                'average_speed': 0.0,
+                'max_speed': 0.0,
+                'trajectory_segments': 0,
+                'detection_gaps': 0,
+                'valid_points': 0
+            }
+
+        # Sort by frame number
+        ball_data = ball_data.sort_values(frame_col).reset_index(drop=True)
+
+        # Calculate time intervals between detections
+        frame_diffs = np.diff(ball_data[frame_col].values)
+        time_intervals = frame_diffs / fps  # Convert to seconds
+
+        # Get coordinate differences
+        coords = ball_data[[x_col, y_col]].values
+        coord_diffs = np.diff(coords, axis=0)
+        frame_distances = np.linalg.norm(coord_diffs, axis=1)
+
+        # Calculate instantaneous speeds (m/s)
+        speeds = np.divide(frame_distances, time_intervals,
+                           out=np.zeros_like(frame_distances),
+                           where=time_intervals != 0)
+
+        # Filter out unrealistic speeds
+        max_realistic_speed = 70.0  # m/s
+        valid_speed_mask = (speeds > 0) & (speeds <= max_realistic_speed)
+
+        # Detect gaps in detection (where frame difference > 1)
+        detection_gaps = np.sum(frame_diffs > 1)
+
+        # Handle gaps by estimating trajectory
+        total_distance = 0.0
+        trajectory_segments = 0
+
+        for i in range(len(frame_distances)):
+            if valid_speed_mask[i]:
+                if frame_diffs[i] == 1:
+                    # Consecutive frames - use direct distance
+                    total_distance += frame_distances[i]
+                else:
+                    # Gap in detection - estimate trajectory
+                    gap_frames = frame_diffs[i]
+                    gap_time = time_intervals[i]
+
+                    # Simple linear interpolation for gaps
+                    estimated_distance = frame_distances[i]
+                    total_distance += estimated_distance
+
+                    print(f"INFO Gap detected {gap_frames} frames, estimated distance {estimated_distance:.2f}m")
+
+                trajectory_segments += 1
+
+        # Calculate statistics
+        valid_speeds = speeds[valid_speed_mask]
+        average_speed = np.mean(valid_speeds) if len(valid_speeds) > 0 else 0.0
+        max_speed = np.max(valid_speeds) if len(valid_speeds) > 0 else 0.0
+
+        # Convert speeds to km/h for reporting
+        average_speed_kmh = average_speed * 3.6
+        max_speed_kmh = max_speed * 3.6
+
+        print(f"BALL ANALYSIS Total distance {total_distance:.2f}m")
+        print(f"BALL ANALYSIS Average speed {average_speed_kmh:.1f} km/h")
+        print(f"BALL ANALYSIS Max speed {max_speed_kmh:.1f} km/h")
+        print(f"BALL ANALYSIS Detection gaps {detection_gaps}")
+        print(f"BALL ANALYSIS Valid trajectory segments {trajectory_segments}")
+
+        return {
+            'total_distance': total_distance,
+            'average_speed': average_speed,
+            'max_speed': max_speed,
+            'average_speed_kmh': average_speed_kmh,
+            'max_speed_kmh': max_speed_kmh,
+            'trajectory_segments': trajectory_segments,
+            'detection_gaps': detection_gaps,
+            'valid_points': len(ball_data),
+            'filtered_unrealistic': np.sum(~valid_speed_mask)
+        }
+
+    def calculate_ball_distance_with_trajectory_estimation(self, df, x_col='X_court', y_col='Y_court',
+                                                          class_col='Class', frame_col='frame', fps=30.0):
+        """
+        Advanced ball distance calculation with parabolic trajectory estimation
+        """
+        ball_data = df[df[class_col] == 'Ball'].copy()
+
+        if ball_data.empty or len(ball_data) < 3:
+            return self.calculate_ball_distance_improved(df, x_col, y_col, class_col, frame_col, fps)
+
+        ball_data = ball_data.sort_values(frame_col).reset_index(drop=True)
+
+        total_distance = 0.0
+        coords = ball_data[[x_col, y_col]].values
+        frames = ball_data[frame_col].values
+
+        i = 0
+        while i < len(coords) - 1:
+            current_frame = frames[i]
+            next_frame = frames[i + 1]
+
+            if next_frame - current_frame == 1:
+                # Consecutive frames - direct distance
+                distance = np.linalg.norm(coords[i + 1] - coords[i])
+                total_distance += distance
+                i += 1
+            else:
+                # Gap in detection - try to estimate trajectory
+                gap_size = next_frame - current_frame
+
+                if gap_size <= 5 and i + 1 < len(coords):  # Only estimate for small gaps
+                    # Use parabolic trajectory estimation
+                    p1 = coords[i]
+                    p2 = coords[i + 1]
+
+                    # Estimate trajectory length (accounting for parabolic path)
+                    straight_distance = np.linalg.norm(p2 - p1)
+
+                    # Approximate parabolic path as 1.1-1.3 times straight distance
+                    trajectory_factor = 1.2  # Conservative estimate
+                    estimated_distance = straight_distance * trajectory_factor
+
+                    total_distance += estimated_distance
+
+                    print(f"TRAJECTORY Gap of {gap_size} frames, estimated distance {estimated_distance:.2f}m")
+                else:
+                    # Large gap - use direct distance
+                    distance = np.linalg.norm(coords[i + 1] - coords[i])
+                    total_distance += distance
+
+                    print(f"LARGE GAP {gap_size} frames, using direct distance {distance:.2f}m")
+
+                i += 1
+
+        return {
+            'total_distance': total_distance,
+            'method': 'trajectory_estimation',
+            'gaps_estimated': True
+        }
+
+    def validate_ball_measurements(self, ball_results, rally_duration_seconds=None):
+        """
+        Validate ball measurements against realistic tennis expectations
+        """
+        print("\n=== BALL MEASUREMENT VALIDATION ===")
+
+        total_distance = ball_results['total_distance']
+        avg_speed = ball_results.get('average_speed_kmh', 0)
+        max_speed = ball_results.get('max_speed_kmh', 0)
+
+        # Tennis ball physics validation
+        print(f"Total ball distance {total_distance:.2f}m")
+
+        if rally_duration_seconds:
+            rally_average_speed = (total_distance / rally_duration_seconds) * 3.6
+            print(f"Rally average speed {rally_average_speed:.1f} km/h")
+
+            # Realistic ranges for tennis
+            if 10 <= rally_average_speed <= 150:
+                print("Rally average speed is realistic")
+            else:
+                print("Rally average speed seems unrealistic")
+
+        if avg_speed > 0:
+            print(f"Ball average speed {avg_speed:.1f} km/h")
+            if 20 <= avg_speed <= 200:
+                print("Average speed is realistic")
+            else:
+                print("Average speed seems unrealistic")
+
+        if max_speed > 0:
+            print(f"Ball max speed {max_speed:.1f} km/h")
+            if 50 <= max_speed <= 250:
+                print("Max speed is realistic")
+            else:
+                print("Max speed seems unrealistic")
+
+        # Distance validation
+        if total_distance > 0:
+            if 50 <= total_distance <= 2000:  # Typical rally distances
+                print("Total distance is realistic")
+            else:
+                print("Total distance seems unrealistic")
+
+        return ball_results
+
 
     def debug_coordinates(self, df, x_col='X_court', y_col='Y_court', sample_size=10):
         print("Tennis Court Coordinate Statistics:")
@@ -274,39 +746,92 @@ class TennisCourtTracker:
         if df[y_col].max() - df[y_col].min() > 50:
             print("WARNING: Y coordinate range seems too large")
 
-def main_processing_pipeline(frame_path, data_csv_path):
+
+def main_video_processing_pipeline(video_path, data_csv_path, sample_interval=1.0, max_frames=30):
+    """
+    Main processing pipeline for video-based corner detection
+    
+    Args:
+        video_path: Path to video file or URL
+        data_csv_path: Path to CSV file with tracking data
+        sample_interval: Interval in seconds between frame samples
+        max_frames: Maximum number of frames to process
+    """
     tracker = TennisCourtTracker()
-    frame = cv2.imread(frame_path)
-    if frame is None:
-        print(f"Error: Could not load image from {frame_path}")
-        return
-    print("=== STEP 1: Detecting Court Corners ===")
-    corners = tracker.detect_court_corners(frame, debug=True)
-    if len(corners) != 4:
-        print(f"Error: Could not detect all 4 corners. Found {len(corners)}")
-        return
-    print("=== STEP 2: Computing Homography ===")
+    
+    print("=== STEP 1: Detecting Court Corners from Video ===")
     try:
-        H = tracker.compute_homography(corners)
-        print("Homography matrix computed successfully")
-        is_valid = tracker.validate_homography(H, corners)
+        # Fixed: Now unpacking 4 values instead of 3
+        average_corners, all_frame_corners, frame_info, representative_frame = tracker.detect_corners_from_video(
+            video_path, sample_interval=sample_interval, max_frames=max_frames, debug=True
+        )
+        
+        if average_corners is None:
+            print("Error: Could not detect corners from video")
+            return
+        
+        print(f"Successfully calculated average corners from {len(all_frame_corners)} frames")
+        
+        # Print summary statistics
+        valid_frames = sum(1 for info in frame_info if info['valid'])
+        print(f"Frame processing summary: {valid_frames}/{len(frame_info)} frames had valid corners")
+        
+        # Optional: Visualize the average corners on the representative frame
+        if representative_frame is not None:
+            print("=== STEP 1.5: Visualizing Average Corners ===")
+            # Extract directory and filename from data_csv_path to match the Out folder structure
+            import os
+            csv_dir = os.path.dirname(data_csv_path)  # Gets './Out'
+            csv_filename = os.path.basename(data_csv_path)  # Gets 'nadal_verdasco_init_df.csv'
+            image_filename = csv_filename.replace('.csv', '_average_corners.jpg')
+            image_output_path = os.path.join(csv_dir, image_filename)
+            
+            tracker.visualize_average_corners(
+                representative_frame, 
+                average_corners, 
+                output_path=image_output_path,
+                show_image=False  # Set to True if you want to display the image
+            )
+        
+    except Exception as e:
+        print(f"Error processing video: {e}")
+        return
+    
+    print("=== STEP 2: Computing Homography with Average Corners ===")
+    try:
+        H = tracker.compute_homography(average_corners)
+        print("Homography matrix computed successfully using average corners")
+        is_valid = tracker.validate_homography(H, average_corners)
         if not is_valid:
             print("WARNING: Homography validation failed")
     except Exception as e:
         print(f"Error computing homography: {e}")
         return
+    
     print("=== STEP 3: Loading and Processing Tracking Data ===")
     df = pd.read_csv(data_csv_path)
     print(f"Loaded {len(df)} tracking points")
     df_mapped = tracker.map_pixels_to_court(df, H)
     tracker.debug_coordinates(df_mapped)
+    
     print("=== STEP 4: Calculating Distances ===")
     player_distances = tracker.calculate_player_distances(df_mapped)
     print("Player distances:")
     print(player_distances)
-    ball_distance = tracker.calculate_ball_distance(df_mapped)
-    print(f"\nBall total distance: {ball_distance:.2f} meters")
-    output_path = data_csv_path.replace('.csv', '_with_court_coords.csv')
-    df_mapped.to_csv(output_path, index=False)
+    
+    ball_results = tracker.calculate_ball_distance_improved(df_mapped, fps=30.0)
+    tracker.validate_ball_measurements(ball_results)
+    #print(f"\nBall total distance: {ball_distance:.2f} meters")
+    
+    # Save results
+    output_path = data_csv_path.replace('.csv', '_with_video_court_coords.csv')
+    df_mapped.to_csv(output_path, index=False, encoding='utf-8')
     print(f"\nResults saved to: {output_path}")
-    return df_mapped, player_distances, ball_distance
+    
+    # Save corner analysis results
+    corner_analysis_path = data_csv_path.replace('.csv', '_corner_analysis.csv')
+    corner_df = pd.DataFrame(frame_info)
+    corner_df.to_csv(corner_analysis_path, index=False, encoding='utf-8')
+    print(f"Corner analysis saved to: {corner_analysis_path}")
+    
+    return df_mapped, player_distances, ball_results, average_corners, frame_info
