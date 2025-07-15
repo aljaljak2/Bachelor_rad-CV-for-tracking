@@ -35,7 +35,7 @@ def make_tracking_video(frames, tboxes, output_path, fps, draw = True):
       
       times = times[-20:]   
 
-      ms = sum(times)/len(times)*1000
+      ms = max(sum(times)/len(times)*1000, 1e-6)
       fps = 1000 / ms    
       
       img = cv2.putText(img, "Time: {:.1f} FPS".format(fps), (0, 30), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (0, 0, 255), 2)

@@ -5,6 +5,7 @@ from sklearn.cluster import DBSCAN
 import urllib.request
 import os
 from collections import defaultdict
+from .homography_manager import HomographyManager
 
 class TennisCourtTracker:
     def __init__(self):
@@ -277,6 +278,31 @@ class TennisCourtTracker:
         corners = self._find_corners_by_line_tracing(left_sideline, right_sideline, frame.copy(), h, w)
         
         return corners
+
+    def _detect_significant_corner_change(self, current_corners, previous_corners, threshold=15.0):
+        """
+        Detect if corner positions have changed significantly
+
+        Args:
+            current_corners: Current frame corners
+            previous_corners: Previous frame corners  
+            threshold: Pixel distance threshold for significant change
+
+        Returns:
+            bool: True if significant change detected
+        """
+        if not current_corners or not previous_corners or len(current_corners) != 4 or len(previous_corners) != 4:
+            return True
+
+        current_ordered = self.get_ordered_corners(current_corners)
+        previous_ordered = self.get_ordered_corners(previous_corners)
+
+        for curr, prev in zip(current_ordered, previous_ordered):
+            distance = np.linalg.norm(np.array(curr) - np.array(prev))
+            if distance > threshold:
+                return True
+
+        return False
 
     def _draw_corners_on_frame(self, frame, corners):
         """Draw detected corners on the frame with labels"""
@@ -835,3 +861,91 @@ def main_video_processing_pipeline(video_path, data_csv_path, sample_interval=1.
     print(f"Corner analysis saved to: {corner_analysis_path}")
     
     return df_mapped, player_distances, ball_results, average_corners, frame_info
+
+def main_video_processing_pipeline_dynamic(video_path, data_csv_path, sample_interval=1.0, max_frames=30):
+    """
+    Main processing pipeline with dynamic homography updates
+    """
+    tracker = TennisCourtTracker()
+
+    print("=== STEP 1: Processing Video with Dynamic Homography ===")
+    try:
+        # Get frame analysis (keep existing corner detection)
+        average_corners, all_frame_corners, frame_info, representative_frame = tracker.detect_corners_from_video(
+            video_path, sample_interval=sample_interval, max_frames=max_frames, debug=True
+        )
+
+        if average_corners is None:
+            print("Error: Could not detect corners from video")
+            return
+
+    except Exception as e:
+        print(f"Error processing video: {e}")
+        return
+
+    print("=== STEP 2: Setting up Dynamic Homography Processing ===")
+    homography_manager = HomographyManager(tracker)
+
+    # Initialize with first valid frame
+    for info in frame_info:
+        if info['valid']:
+            initial_homography = homography_manager.update_homography_if_needed(
+                info['corners'], info['frame_number']
+            )
+            break
+
+    print("=== STEP 3: Loading and Processing Tracking Data with Dynamic Homography ===")
+    df = pd.read_csv(data_csv_path)
+    print(f"Loaded {len(df)} tracking points")
+
+    # Process data with dynamic homography updates
+    df_mapped = df.copy()
+    current_homography = initial_homography
+
+    # Group by frame and apply appropriate homography
+    for frame_num in sorted(df['frame'].unique()):
+        frame_data = df[df['frame'] == frame_num]
+
+        # Check if we have corner data for this frame
+        frame_corners = None
+        for info in frame_info:
+            if info['frame_number'] == frame_num and info['valid']:
+                frame_corners = info['corners']
+                break
+
+        # Update homography if needed
+        if frame_corners is not None:
+            current_homography = homography_manager.update_homography_if_needed(
+                frame_corners, frame_num
+            )
+
+        # Apply current homography to this frame's data
+        if current_homography is not None:
+            frame_mapped = tracker.map_pixels_to_court(frame_data, current_homography)
+            df_mapped.loc[df['frame'] == frame_num, ['X_court', 'Y_court']] = frame_mapped[['X_court', 'Y_court']]
+
+    tracker.debug_coordinates(df_mapped)
+
+    print("=== STEP 4: Calculating Distances ===")
+    player_distances = tracker.calculate_player_distances(df_mapped)
+    print("Player distances:")
+    print(player_distances)
+
+    ball_results = tracker.calculate_ball_distance_improved(df_mapped, fps=30.0)
+    tracker.validate_ball_measurements(ball_results)
+
+    # Save results with homography history
+    output_path = data_csv_path.replace('.csv', '_with_dynamic_homography.csv')
+    df_mapped.to_csv(output_path, index=False, encoding='utf-8')
+    print(f"\nResults saved to: {output_path}")
+
+    # Save homography history
+    homography_history_path = data_csv_path.replace('.csv', '_homography_history.csv')
+    history_df = pd.DataFrame([
+        {'frame': h['frame'], 'homography_updated': True}
+        for h in homography_manager.homography_history
+    ])
+    history_df.to_csv(homography_history_path, index=False)
+    print(f"Homography history saved to: {homography_history_path}")
+
+    return df_mapped, player_distances, ball_results, homography_manager.homography_history
