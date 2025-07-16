@@ -1,9 +1,5 @@
-from Distance_measurement.tennis_court_tracker import main_video_processing_pipeline
-from Distance_measurement.tracker_based_on_first_frame import main_first_frame_processing_pipeline
-
-from Distance_measurement.tracker_custom_frame import main_processing_pipeline
-from Distance_measurement.tennis_court_tracker import main_video_processing_pipeline_dynamic
-
+#from Distance_measurement.tennis_court_tracker import  *
+from Distance_measurement.main_court_tracker import *
 
 # --- PARAMETERS ---
 video_path = "./test_videos/nadal-verdasco.mp4"
@@ -22,30 +18,29 @@ get_init_data(video_path, out_name, teams_colors, ball_only)
 get_video_tracks(video_path, out_name)
 create_tracking_boxes_video(video_path, out_name)
 '''
-# --- 2. Call the TennisCourtTracker pipeline ---
-
-
+'''
+# Standard pipeline (uses average corners)
 results = main_video_processing_pipeline(
     video_path=video_path,  
     data_csv_path=init_df_path
-    )
+)
+'''
 
-# --- 3. Call the TennisCourtTracker pipeline with dynamic homography update ---
-print("\n -----------------------------------------------------------------\n")
 
-results_dynamic =  main_video_processing_pipeline_dynamic(
-    video_path=video_path,  
+# Dynamic pipeline (updates homography per frame)
+results = main_video_processing_pipeline_dynamic(
+    video_path=video_path,      
     data_csv_path=init_df_path
-) 
+)
 
 
 '''
-frame_path="./test_videos/badminton.png"
+frame_path="./test_videos/sinner_dimitrov.png"
 
 frame = cv2.imread(frame_path)
 tracker = TennisCourtTracker()
 corners = tracker.detect_court_corners(frame)
 tracker._draw_corners_on_frame(frame, corners)
-cv2.imwrite("./Out/PROBA1.png", frame)
+cv2.imwrite("./Out/SINNER.png", frame)
 '''
 
