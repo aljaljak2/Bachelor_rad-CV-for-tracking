@@ -1,0 +1,15 @@
+{
+  "mapping_issues": [
+    "X coordinate range too large - possible homography error",
+    "Y coordinate range too large - possible homography error",
+    "High outlier percentage (46.8%) - check corner detection"
+  ],
+  "coordinate_ranges": {
+    "x_min": -39.35628890991211,
+    "x_max": 14.35854721069336,
+    "y_min": -60.80426025390625,
+    "y_max": 24.337692260742188
+  },
+  "outlier_count": 293,
+  "total_points": 450,
+  "homography_valid": 

@@ -1,0 +1,9 @@
+frame_number,timestamp,corners_found,corners,valid
+0,0.0,4,"[(np.int32(372), np.int32(228)), (np.int32(137), np.int32(615)), (np.int32(842), np.int32(28)), (np.int32(1224), np.int32(621))]",True
+25,0.9953703703703705,4,"[(np.int32(373), np.int32(228)), (np.int32(137), np.int32(615)), (np.int32(971), np.int32(229)), (np.int32(1223), np.int32(621))]",True
+50,1.990740740740741,4,"[(np.int32(376), np.int32(227)), (np.int32(136), np.int32(615)), (np.int32(970), np.int32(230)), (np.int32(1224), np.int32(621))]",True
+75,2.986111111111111,4,"[(np.int32(377), np.int32(227)), (np.int32(137), np.int32(615)), (np.int32(844), np.int32(39)), (np.int32(1224), np.int32(621))]",True
+100,3.981481481481482,4,"[(np.int32(373), np.int32(228)), (np.int32(137), np.int32(615)), (np.int32(847), np.int32(39)), (np.int32(1223), np.int32(621))]",True
+125,4.976851851851852,4,"[(np.int32(378), np.int32(227)), (np.int32(137), np.int32(615)), (np.int32(970), np.int32(230)), (np.int32(1223), np.int32(621))]",True
+150,5.972222222222222,4,"[(np.int32(378), np.int32(227)), (np.int32(137), np.int32(615)), (np.int32(841), np.int32(33)), (np.int32(1223), np.int32(621))]",True
+175,6.9675925925925934,4,"[(np.int32(376), np.int32(227)), (np.int32(137), np.int32(615)), (np.int32(840), np.int32(29)), (np.int32(1224), np.int32(621))]",True

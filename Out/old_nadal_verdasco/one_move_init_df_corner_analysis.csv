@@ -1,0 +1,5 @@
+frame_number,timestamp,corners_found,corners,valid
+0,0.0,4,"[(np.int32(439), np.int32(213)), (np.int32(261), np.int32(610)), (np.int32(926), np.int32(214)), (np.int32(1159), np.int32(576))]",True
+25,0.9908256880733946,4,"[(np.int32(437), np.int32(214)), (np.int32(266), np.int32(595)), (np.int32(809), np.int32(31)), (np.int32(1160), np.int32(576))]",True
+50,1.981651376146789,4,"[(np.int32(502), np.int32(1)), (np.int32(144), np.int32(575)), (np.int32(925), np.int32(214)), (np.int32(1155), np.int32(577))]",True
+75,2.9724770642201834,4,"[(np.int32(367), np.int32(213)), (np.int32(142), np.int32(575)), (np.int32(807), np.int32(35)), (np.int32(1152), np.int32(577))]",True

@@ -185,6 +185,25 @@ def main_video_processing_pipeline(video_path, data_csv_path, sample_interval=1.
     corner_df.to_csv(corner_analysis_path, index=False, encoding='utf-8')
     print(f"Corner analysis saved to: {corner_analysis_path}")
     
+    # Save player movement analysis
+    player_analysis_path = data_csv_path.replace('.csv', '_player_movement_analysis.csv')
+    player_distances.to_csv(player_analysis_path, index=False, encoding='utf-8')
+    print(f"Player movement analysis saved to: {player_analysis_path}")
+    
+    # Save ball movement analysis
+    ball_analysis_path = data_csv_path.replace('.csv', '_ball_movement_analysis.csv')
+    ball_df = pd.DataFrame([ball_results])  # Convert dict to DataFrame
+    ball_df.to_csv(ball_analysis_path, index=False, encoding='utf-8')
+    print(f"Ball movement analysis saved to: {ball_analysis_path}")
+    
+    # Save detailed movement patterns (optional)
+    movement_patterns = tracker.analyze_player_movement_patterns(df_mapped)
+    if movement_patterns:
+        patterns_path = data_csv_path.replace('.csv', '_movement_patterns.json')
+        with open(patterns_path, 'w') as f:
+            json.dump(movement_patterns, f, indent=2)
+        print(f"Movement patterns saved to: {patterns_path}")
+    
     return df_mapped, player_distances, ball_results, average_corners, frame_info
 
 

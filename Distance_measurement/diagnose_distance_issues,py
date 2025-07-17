@@ -1,0 +1,288 @@
+"""
+Analysis of Why Distance Calculations Are Unrealistic
+"""
+import numpy as np
+import pandas as pd
+
+
+class DistanceCalculationDiagnostics:
+    def __init__(self):
+        pass
+    
+    def analyze_distance_calculation_issues(self, csv_path):
+        """
+        Analyze why distance calculations are giving unrealistic results
+        """
+        print("=== DISTANCE CALCULATION ISSUE ANALYSIS ===")
+        
+        # Load the data
+        df = pd.read_csv(csv_path)
+        print(f"Loaded {len(df)} tracking points")
+        
+        # Focus on a specific player (Player 4 who shows 29.3m)
+        player_4 = df[df['ID'] == 4].copy()
+        
+        if len(player_4) == 0:
+            print("Player 4 not found, analyzing first player instead")
+            player_ids = df['ID'].unique()
+            if len(player_ids) > 0:
+                player_4 = df[df['ID'] == player_ids[0]].copy()
+            else:
+                print("No players found!")
+                return
+        
+        print(f"\n=== PLAYER 4 ANALYSIS ===")
+        print(f"Total detections: {len(player_4)}")
+        
+        # Sort by frame
+        player_4 = player_4.sort_values('frame').reset_index(drop=True)
+        
+        # Analyze coordinate ranges
+        x_coords = player_4['X_court'].values
+        y_coords = player_4['Y_court'].values
+        frames = player_4['frame'].values
+        
+        print(f"Frame range: {frames.min()} to {frames.max()}")
+        print(f"X coordinate range: {x_coords.min():.3f} to {x_coords.max():.3f} (range: {x_coords.max() - x_coords.min():.3f})")
+        print(f"Y coordinate range: {y_coords.min():.3f} to {y_coords.max():.3f} (range: {y_coords.max() - y_coords.min():.3f})")
+        
+        # Calculate frame-to-frame movements
+        if len(player_4) > 1:
+            coords = player_4[['X_court', 'Y_court']].values
+            movements = np.diff(coords, axis=0)
+            distances = np.linalg.norm(movements, axis=1)
+            
+            print(f"\n=== MOVEMENT ANALYSIS ===")
+            print(f"Frame-to-frame distances:")
+            print(f"  Min: {distances.min():.3f}m")
+            print(f"  Max: {distances.max():.3f}m") 
+            print(f"  Mean: {distances.mean():.3f}m")
+            print(f"  Total: {distances.sum():.3f}m")
+            
+            # Show largest movements
+            large_movements = distances > 1.0  # Movements > 1 meter
+            print(f"\nLarge movements (>1m): {large_movements.sum()}")
+            
+            if large_movements.sum() > 0:
+                print("Largest movements:")
+                large_indices = np.where(large_movements)[0]
+                for idx in large_indices[:5]:  # Show top 5
+                    from_frame = frames[idx]
+                    to_frame = frames[idx + 1]
+                    from_pos = coords[idx]
+                    to_pos = coords[idx + 1]
+                    distance = distances[idx]
+                    
+                    print(f"  Frame {from_frame} -> {to_frame}: "
+                          f"({from_pos[0]:.2f}, {from_pos[1]:.2f}) -> "
+                          f"({to_pos[0]:.2f}, {to_pos[1]:.2f}) = {distance:.2f}m")
+        
+        return player_4
+    
+    def identify_common_issues(self, player_data):
+        """
+        Identify common issues causing unrealistic distance calculations
+        """
+        print(f"\n=== COMMON ISSUES IDENTIFICATION ===")
+        
+        issues_found = []
+        
+        # Issue 1: Detection jitter/noise
+        coords = player_data[['X_court', 'Y_court']].values
+        if len(coords) > 1:
+            movements = np.diff(coords, axis=0)
+            distances = np.linalg.norm(movements, axis=1)
+            
+            # Check for jittery movement (many small movements)
+            small_movements = distances < 0.5  # Less than 50cm
+            if small_movements.sum() > len(distances) * 0.5:
+                issues_found.append("DETECTION JITTER: >50% of movements are small (<0.5m)")
+                print("[W] DETECTION JITTER detected")
+                print(f"   {small_movements.sum()}/{len(distances)} movements are <0.5m")
+                print("   This suggests detection noise/jitter accumulating into large distances")
+        
+        # Issue 2: Unrealistic large jumps
+        if len(coords) > 1:
+            large_movements = distances > 2.0  # More than 2 meters in one frame
+            if large_movements.sum() > 0:
+                issues_found.append(f"LARGE JUMPS: {large_movements.sum()} movements >2m per frame")
+                print("[W] UNREALISTIC JUMPS detected")
+                print(f"   {large_movements.sum()} movements are >2m between frames")
+                print("   This suggests tracking errors or coordinate mapping issues")
+        
+        # Issue 3: Coordinate system issues
+        x_coords = player_data['X_court'].values
+        y_coords = player_data['Y_court'].values
+        
+        # Check if coordinates are outside reasonable court bounds
+        court_width, court_length = 10.97, 23.77
+        x_outliers = ((x_coords < -3) | (x_coords > court_width + 3)).sum()
+        y_outliers = ((y_coords < -3) | (y_coords > court_length + 3)).sum()
+        
+        if x_outliers > 0 or y_outliers > 0:
+            issues_found.append(f"OUT OF BOUNDS: {x_outliers} X outliers, {y_outliers} Y outliers")
+            print("[W] OUT OF BOUNDS coordinates detected")
+            print(f"   {x_outliers} X coordinates outside court bounds")
+            print(f"   {y_outliers} Y coordinates outside court bounds")
+        
+        # Issue 4: Inconsistent frame gaps
+        frames = player_data['frame'].values
+        frame_gaps = np.diff(frames)
+        large_gaps = frame_gaps > 5  # Gaps >5 frames
+        
+        if large_gaps.sum() > 0:
+            issues_found.append(f"FRAME GAPS: {large_gaps.sum()} gaps >5 frames")
+            print("[W] LARGE FRAME GAPS detected")
+            print(f"   {large_gaps.sum()} gaps between detections >5 frames")
+            print("   Distance calculation may be incorrect across gaps")
+        
+        # Issue 5: Stationary player accumulating distance
+        if len(coords) > 10:
+            position_variance = np.var(coords, axis=0)
+            total_variance = np.sum(position_variance)
+            
+            if total_variance < 1.0:  # Very low movement variance
+                total_distance = np.sum(distances) if len(coords) > 1 else 0
+                if total_distance > 5.0:
+                    issues_found.append("STATIONARY ACCUMULATION: Low variance but high distance")
+                    print("[W] STATIONARY PLAYER ACCUMULATION detected")
+                    print(f"   Position variance: {total_variance:.3f} (very low)")
+                    print(f"   Total distance: {total_distance:.1f}m (high)")
+                    print("   Player appears stationary but accumulates distance from jitter")
+        
+        return issues_found
+    
+    def suggest_fixes(self, issues_found):
+        """
+        Suggest fixes for identified issues
+        """
+        print(f"\n=== SUGGESTED FIXES ===")
+        
+        if not issues_found:
+            print("[OK] No major issues detected")
+            return
+        
+        fixes = []
+        
+        if any("DETECTION JITTER" in issue for issue in issues_found):
+            fixes.append("1. APPLY SMOOTHING FILTER:")
+            fixes.append("   - Use moving average to smooth coordinates")
+            fixes.append("   - Apply minimum movement threshold (ignore <10cm movements)")
+            fixes.append("   - Use median filter to remove outliers")
+        
+        if any("LARGE JUMPS" in issue for issue in issues_found):
+            fixes.append("2. FILTER UNREALISTIC MOVEMENTS:")
+            fixes.append("   - Set maximum speed limit (e.g., 8 m/s for tennis)")
+            fixes.append("   - Interpolate across large gaps instead of direct distance")
+            fixes.append("   - Flag and exclude impossible movements")
+        
+        if any("OUT OF BOUNDS" in issue for issue in issues_found):
+            fixes.append("3. FIX COORDINATE MAPPING:")
+            fixes.append("   - Check homography computation")
+            fixes.append("   - Verify corner detection accuracy")
+            fixes.append("   - Apply coordinate constraints to court bounds")
+        
+        if any("FRAME GAPS" in issue for issue in issues_found):
+            fixes.append("4. HANDLE FRAME GAPS PROPERLY:")
+            fixes.append("   - Don't accumulate distance across large gaps")
+            fixes.append("   - Use interpolation for small gaps (<3 frames)")
+            fixes.append("   - Mark gap periods as 'uncertain'")
+        
+        if any("STATIONARY ACCUMULATION" in issue for issue in issues_found):
+            fixes.append("5. IMPLEMENT STATIONARY DETECTION:")
+            fixes.append("   - Detect when player is essentially stationary")
+            fixes.append("   - Ignore micro-movements below noise threshold")
+            fixes.append("   - Use velocity-based filtering")
+        
+        for fix in fixes:
+            print(fix)
+    
+    def create_improved_distance_calculator(self):
+        """
+        Create an improved distance calculation method
+        """
+        print(f"\n=== IMPROVED DISTANCE CALCULATION ===")
+        
+        improved_code = '''
+def calculate_realistic_player_distance(player_data, fps=25.0):
+    """
+    Improved distance calculation that handles common issues
+    """
+    if len(player_data) < 2:
+        return 0.0
+    
+    # Sort by frame
+    player_data = player_data.sort_values('frame').reset_index(drop=True)
+    coords = player_data[['X_court', 'Y_court']].values
+    frames = player_data['frame'].values
+    
+    # Step 1: Apply smoothing to reduce jitter
+    from scipy.signal import medfilt
+    if len(coords) > 5:
+        coords[:, 0] = medfilt(coords[:, 0], kernel_size=3)
+        coords[:, 1] = medfilt(coords[:, 1], kernel_size=3)
+    
+    # Step 2: Calculate movements and apply filters
+    movements = np.diff(coords, axis=0)
+    distances = np.linalg.norm(movements, axis=1)
+    frame_gaps = np.diff(frames)
+    
+    # Step 3: Apply movement filters
+    min_movement = 0.1  # Ignore movements <10cm (detection noise)
+    max_speed = 8.0     # Maximum realistic speed (m/s)
+    
+    time_intervals = frame_gaps / fps
+    speeds = distances / time_intervals
+    
+    # Filter criteria
+    valid_movements = (
+        (distances >= min_movement) &           # Ignore tiny movements
+        (speeds <= max_speed) &                 # Ignore impossible speeds
+        (frame_gaps <= 3)                       # Only count short gaps
+    )
+    
+    # Step 4: Calculate total distance from valid movements only
+    total_distance = distances[valid_movements].sum()
+    
+    print(f"Movement filtering results:")
+    print(f"  Total movements: {len(distances)}")
+    print(f"  Valid movements: {valid_movements.sum()}")
+    print(f"  Filtered out: {(~valid_movements).sum()}")
+    print(f"  Realistic distance: {total_distance:.2f}m")
+    
+    return total_distance
+        '''
+        
+        print("Here's the improved calculation method:")
+        print(improved_code)
+        
+        return improved_code
+
+
+def diagnose_distance_issues(csv_path):
+    """
+    Main function to diagnose distance calculation issues
+    """
+    diagnostics = DistanceCalculationDiagnostics()
+    
+    # Analyze the issues
+    player_data = diagnostics.analyze_distance_calculation_issues(csv_path)
+    
+    if player_data is not None:
+        # Identify common issues
+        issues = diagnostics.identify_common_issues(player_data)
+        
+        # Suggest fixes
+        diagnostics.suggest_fixes(issues)
+        
+        # Provide improved calculator
+        diagnostics.create_improved_distance_calculator()
+    
+    return player_data
+
+
+# Example usage
+if __name__ == "__main__":
+    # Run diagnostics on your data
+    csv_path = "./Out/melbourne_init_df_with_dynamic_court_coords.csv"
+    player_data = diagnose_distance_issues(csv_path)
