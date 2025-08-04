@@ -2,10 +2,10 @@
 from Distance_measurement.main_court_tracker import *
 from Distance_measurement.corner_detection import *
 # --- PARAMETERS ---
-video_path = "./test_videos/melbourne.mp4"
-out_name = "melbourne"
+video_path = "./test_videos/melbourne2.mp4"
+out_name = "melbourne_kratak_poen"
 init_df_path = f"./Out/{out_name}_init_df.csv"
-'''
+
 # --- 1. Get initial data (creates a dataframe, usually saved as CSV) ---
 # (Uncomment if you want to regenerate the initial dataframe)
 from Detect_and_Track.get_init_data import get_init_data
@@ -17,7 +17,7 @@ get_init_data(video_path, out_name, teams_colors, ball_only)
 
 get_video_tracks(video_path, out_name)
 create_tracking_boxes_video(video_path, out_name)
-'''
+
 
 # Standard pipeline (uses average corners)
 results = main_video_processing_pipeline(

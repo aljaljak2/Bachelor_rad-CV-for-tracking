@@ -1,0 +1,324 @@
+{
+  "1": {
+    "total_frames": 146,
+    "stationary_frames": 111,
+    "walking_frames": 34,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.04986551734132936,
+    "avg_acceleration": 0.036053277889640835,
+    "position_heat_map": {
+      "most_occupied_region": [
+        1,
+        4
+      ],
+      "position_spread": [
+        0.6784745030286722,
+        0.7906680445441219
+      ],
+      "center_of_activity": [
+        2.412310615173651,
+        5.663051515887854
+      ]
+    }
+  },
+  "2": {
+    "total_frames": 146,
+    "stationary_frames": 86,
+    "walking_frames": 59,
+    "running_frames": 0,
+    "dominant_direction": "S",
+    "movement_variability": 0.11848465549398947,
+    "avg_acceleration": 0.061658095440515384,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        6
+      ],
+      "position_spread": [
+        0.6813523684288554,
+        2.8870516393741434
+      ],
+      "center_of_activity": [
+        -0.30812432496492326,
+        8.225175159527081
+      ]
+    }
+  },
+  "3": {
+    "total_frames": 146,
+    "stationary_frames": 79,
+    "walking_frames": 66,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.07268543602155354,
+    "avg_acceleration": 0.053360513352599837,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        1.3093534482965,
+        0.5124175585046125
+      ],
+      "center_of_activity": [
+        -1.9137081199248556,
+        -6.789218788189237
+      ]
+    }
+  },
+  "4": {
+    "total_frames": 146,
+    "stationary_frames": 88,
+    "walking_frames": 57,
+    "running_frames": 0,
+    "dominant_direction": "W",
+    "movement_variability": 0.06772822874990062,
+    "avg_acceleration": 0.050830578665723776,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.9838964767444629,
+        0.8792306890707402
+      ],
+      "center_of_activity": [
+        3.1404277887385317,
+        -7.471571474604215
+      ]
+    }
+  },
+  "5": {
+    "total_frames": 146,
+    "stationary_frames": 129,
+    "walking_frames": 16,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.04241269862363646,
+    "avg_acceleration": 0.016130323727131867,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.02756683656753212,
+        0.03936360530632384
+      ],
+      "center_of_activity": [
+        -5.249932787365269,
+        -16.33596998489489
+      ]
+    }
+  },
+  "6": {
+    "total_frames": 146,
+    "stationary_frames": 145,
+    "walking_frames": 0,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.019896073672044635,
+    "avg_acceleration": 0.010030014165569819,
+    "position_heat_map": {
+      "most_occupied_region": [
+        6,
+        4
+      ],
+      "position_spread": [
+        0.011772403137863994,
+        0.030422513232863185
+      ],
+      "center_of_activity": [
+        6.63937139142792,
+        5.037852778906398
+      ]
+    }
+  },
+  "7": {
+    "total_frames": 146,
+    "stationary_frames": 129,
+    "walking_frames": 16,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.04550946521555283,
+    "avg_acceleration": 0.023020277234239717,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.008986180796151936,
+        0.0710715389050088
+      ],
+      "center_of_activity": [
+        3.1636389913738534,
+        -15.39552325386757
+      ]
+    }
+  },
+  "8": {
+    "total_frames": 123,
+    "stationary_frames": 59,
+    "walking_frames": 61,
+    "running_frames": 2,
+    "dominant_direction": "E",
+    "movement_variability": 0.4159760019001516,
+    "avg_acceleration": 0.17705701146341812,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.24391923791960965,
+        1.1185109128272503
+      ],
+      "center_of_activity": [
+        -9.861062907318905,
+        -15.775934367556246
+      ]
+    }
+  },
+  "9": {
+    "total_frames": 129,
+    "stationary_frames": 128,
+    "walking_frames": 0,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.022382849574761096,
+    "avg_acceleration": 0.007800955024456872,
+    "position_heat_map": {
+      "most_occupied_region": [
+        5,
+        2
+      ],
+      "position_spread": [
+        0.0324617049134887,
+        0.030967727529623422
+      ],
+      "center_of_activity": [
+        6.298247982869309,
+        2.1385056944639915
+      ]
+    }
+  },
+  "11": {
+    "total_frames": 128,
+    "stationary_frames": 126,
+    "walking_frames": 1,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.03979011266424256,
+    "avg_acceleration": 0.023625847347016737,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.010448779627677833,
+        0.08969107463059942
+      ],
+      "center_of_activity": [
+        6.695158696032804,
+        -4.685209738598611
+      ]
+    }
+  },
+  "14": {
+    "total_frames": 145,
+    "stationary_frames": 129,
+    "walking_frames": 15,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.03277493044201237,
+    "avg_acceleration": 0.02031464590135924,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.01325282003496293,
+        0.05345310789462213
+      ],
+      "center_of_activity": [
+        -9.709649893038673,
+        -7.421700825027975
+      ]
+    }
+  },
+  "40": {
+    "total_frames": 115,
+    "stationary_frames": 107,
+    "walking_frames": 7,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.02615791310163599,
+    "avg_acceleration": 0.01047376609296198,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.00965201995341917,
+        0.077033993784573
+      ],
+      "center_of_activity": [
+        9.133153840124592,
+        -7.382293482532002
+      ]
+    }
+  },
+  "65": {
+    "total_frames": 59,
+    "stationary_frames": 40,
+    "walking_frames": 18,
+    "running_frames": 0,
+    "dominant_direction": "E",
+    "movement_variability": 0.13265208024649647,
+    "avg_acceleration": 0.08866924466292989,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.10643910528924078,
+        0.3148301417307613
+      ],
+      "center_of_activity": [
+        -9.678927022404809,
+        -16.76318658858149
+      ]
+    }
+  },
+  "77": {
+    "total_frames": 47,
+    "stationary_frames": 22,
+    "walking_frames": 22,
+    "running_frames": 2,
+    "dominant_direction": "E",
+    "movement_variability": 0.3675130614766052,
+    "avg_acceleration": 0.22097910762220646,
+    "position_heat_map": {
+      "most_occupied_region": [
+        0,
+        0
+      ],
+      "position_spread": [
+        0.3054483976927408,
+        1.4039849603799253
+      ],
+      "center_of_activity": [
+        -9.606684681795032,
+        -14.603339051915121
+      ]
+    }
+  }
+}
