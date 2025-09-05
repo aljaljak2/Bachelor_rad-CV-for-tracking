@@ -38,7 +38,7 @@ After step 3, the tracking data of the video footage is generated and can be use
 - **Movement Analysis**: Detailed analysis of player movement patterns and ball trajectory
 
 <div align="center">
-<img src="./readme_photos/court_mapped_dataframe.png" alt="Court Mapped Data" width="500"/>
+<img src="./readme_photos/debug_frame_100.jpg" alt="Court Edge Detection" width="500"/>
 </div>
 
 All measurements and analysis results are automatically saved to CSV files for further processing and analysis.
