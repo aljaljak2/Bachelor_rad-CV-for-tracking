@@ -2,6 +2,8 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import cv2
 import numpy as np
+import time
+import csv
 from .utils import read_class_names
 
 from .nn_matching import NearestNeighborDistanceMetric
@@ -62,37 +64,56 @@ def trackingXl5(Yolo_model, ball_model, video_path):
     val_list = list(NUM_CLASS.values())
  
     frames = []
-    tboxes = []    
-    while True:        
+    tboxes = []
+    
+    # Initialize timing variables
+    frame_count = 0
+    timing_data = []
+    
+    # Ensure output directory exists
+    os.makedirs('./Out', exist_ok=True)
+    
+    # Create CSV filename
+    csv_filename = f'./Out/detailed_frame_timing_{int(time.time())}.csv'
+    
+    while True:
+        # Start timing for this frame
+        frame_start_time = time.time()
+        
         _, frame = vid.read()
-
         try:
             original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            original_frame = cv2.resize(original_frame, (1280,720))            
-            frames.append(original_frame)            
+            original_frame = cv2.resize(original_frame, (1280,720)) 
+            frames.append(original_frame) 
         except:
             break
-              
-        results = Yolo_model(original_frame)   
-
+        
+        frame_count += 1
+        print(f"Frame {frame_count} - Processing started at: {frame_start_time:.6f}")
+        
+        # Detection timing
+        detection_start = time.time()
+        results = Yolo_model(original_frame) 
         pred_bbox = results.xyxy[0].tolist()
-        bboxes = [np.array(box) for box in pred_bbox]              
-
+        bboxes = [np.array(box) for box in pred_bbox] 
+        
         # extract bboxes to boxes (x, y, width, height), scores and names
         boxes, scores, names = [], [], []
-        for bbox in bboxes:           
-          boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
-          scores.append(bbox[4])
-          names.append(NUM_CLASS[int(bbox[5])])
-     
-        # Obtain all the detections for the given frame.
+        for bbox in bboxes: 
+            boxes.append([bbox[0].astype(int), bbox[1].astype(int), bbox[2].astype(int)-bbox[0].astype(int), bbox[3].astype(int)-bbox[1].astype(int)])
+            scores.append(bbox[4])
+            names.append(NUM_CLASS[int(bbox[5])])
+        
+        detection_end = time.time()
+        
+        # Tracking timing
+        tracking_start = time.time()
         boxes = np.array(boxes) 
         names = np.array(names)
         scores = np.array(scores)
         features = np.array(encoder(original_frame, boxes))
         detections = [Detection(bbox, score, class_name, feature) for bbox, score, class_name, feature in zip(boxes, scores, names, features)]
-
-        # Pass detections to the deepsort object and obtain the track information.
+        
         tracker.predict()
         tracker.update(detections)
 
@@ -114,14 +135,38 @@ def trackingXl5(Yolo_model, ball_model, video_path):
 
         #detect the ball only
         if 32 not in [b[-1] for b in tracked_bboxes]:  
-          ball_results = ball_model(original_frame).xyxy[0].tolist()           
-          if len(ball_results) > 0:
-            ball_pred_bbox = ball_results[0]
-            ball = [round(ball_pred_bbox[0]), round(ball_pred_bbox[1]), round(ball_pred_bbox[2]), round(ball_pred_bbox[3]), 0, 32]
-            tracked_bboxes.append(ball)
+            ball_results = ball_model(original_frame).xyxy[0].tolist()           
+            if len(ball_results) > 0:
+                ball_pred_bbox = ball_results[0]
+                ball = [round(ball_pred_bbox[0]), round(ball_pred_bbox[1]), round(ball_pred_bbox[2]), round(ball_pred_bbox[3]), 0, 32]
+                tracked_bboxes.append(ball)
                 
-        tboxes.append([[round(bb) for bb in tracked_bbox] for tracked_bbox in tracked_bboxes]) 
+        tboxes.append([[round(bb) for bb in tracked_bbox] for tracked_bbox in tracked_bboxes])
+        
+        tracking_end = time.time()
+        
+        # End timing for this frame
+        frame_end_time = time.time()
+        total_processing_time = frame_end_time - frame_start_time
+        detection_time = detection_end - detection_start
+        tracking_time = tracking_end - tracking_start
+        complete_detection_tracking_time = detection_time + tracking_time 
+        
+        print(f"Frame {frame_count} - Completed at: {frame_end_time:.6f}")
+        print(f"Frame {frame_count} - Total time: {total_processing_time:.6f}s (Detection: {detection_time:.6f}s, Tracking: {tracking_time:.6f}s, Detection+Tracking: {complete_detection_tracking_time:.6f}s)")
+
+        
+        # Store timing data
+        timing_data.append([frame_count, frame_start_time, frame_end_time, detection_time, tracking_time, complete_detection_tracking_time, total_processing_time])
+
     
+    # Write timing data to CSV
+    with open(csv_filename, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Frame_Number', 'Start_Time (unix_timestamp)', 'End_Time (unix_timestamp)', 'Detection_Time (s)', 'Tracking_Time (s)', 'Complete_Detection_Tracking_Time (s)', 'Total_Processing_Time (s)'])
+        writer.writerows(timing_data)
+    
+    print(f"\nDetailed timing data saved to: {csv_filename}")
     print(f'tracked {len(frames)} frames')
 
     return frames, tboxes, fps
