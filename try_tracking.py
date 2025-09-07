@@ -11,20 +11,30 @@ init_df_path = f"./Out/{out_name}_init_df.csv"
 from Detect_and_Track.get_init_data import get_init_data
 from Detect_and_Track.get_tracks import get_video_tracks
 from Detect_and_Track.create_tracking_boxes_video import create_tracking_boxes_video
+from Detect_and_Track.create_tracking_video_and_init_data import create_tracking_video_and_init_data
 teams_colors = ["red", "blue"]
 ball_only = False
-get_init_data(video_path, out_name, teams_colors, ball_only)
+#get_init_data(video_path, out_name, teams_colors, ball_only)
 
-get_video_tracks(video_path, out_name)
-create_tracking_boxes_video(video_path, out_name)
+#get_video_tracks(video_path, out_name)
+#create_tracking_boxes_video(video_path, out_name)
 
 
+# Process video once to get both tracking video and init CSV
+init_df, ziframes, zitboxes = create_tracking_video_and_init_data(
+    video_path=video_path, 
+    out_name=out_name, 
+    teams_colors=teams_colors, 
+    ball_only=ball_only
+)
+
+'''
 # Standard pipeline (uses average corners)
 results = main_video_processing_pipeline(
     video_path=video_path,  
     data_csv_path=init_df_path
 )
-
+'''
 
 '''
 # Dynamic pipeline (updates homography per frame)
