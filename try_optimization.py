@@ -9,7 +9,7 @@ results = optimizer.optimize_resolution(
     ball_only=True,
     step_factor=0.8,
     min_width=320,
-    test_percentage=30.0,              # Test 60% of resolutions
+    test_percentage=90.0,              # Test 60% of resolutions
     prefer_higher_resolution=True      # Focus on higher quality
 )
 
