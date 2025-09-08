@@ -30,7 +30,7 @@ After step 3, the tracking data of the video footage is generated and can be use
 
 ## 4 - Court Coordinate Mapping and Distance Analysis
 
-**New Feature:** The system now includes advanced court analysis capabilities specifically designed for tennis videos:
+The system includes advanced court analysis capabilities specifically designed for tennis videos:
 
 - **Edge Detection and Homography**: Automatic detection of court boundaries using edge detection algorithms and creation of homography matrices for perspective transformation
 - **Coordinate Mapping**: Transformation of pixel coordinates from video footage to real tennis court coordinates
@@ -42,6 +42,80 @@ After step 3, the tracking data of the video footage is generated and can be use
 </div>
 
 All measurements and analysis results are automatically saved to CSV files for further processing and analysis.
+
+## 5 - Resolution and ROI Optimization
+
+The system supports advanced optimization techniques to improve both speed and accuracy:
+
+- **Resolution Optimization**: Automatically tests multiple video resolutions to find the best trade-off between processing speed (FPS) and detection/tracking accuracy.
+- **ROI (Region of Interest) Optimization**: Focuses detection and tracking on a dynamically selected region of the frame (e.g., around a specific player), significantly reducing computation and improving real-time performance.
+
+### Resolution Optimization
+
+The resolution optimizer will automatically evaluate different downscaled versions of your video, measuring performance and accuracy at each step. This helps you select the optimal resolution for your hardware and use case.
+
+**Example usage:**
+
+```python
+from Time_Optimization.resolution_optimizer import ResolutionPerformanceOptimizer
+
+optimizer = ResolutionPerformanceOptimizer(target_fps=30.0, min_detection_threshold=2)
+
+results = optimizer.optimize_resolution(
+    video_path="./test_videos/melbourne2.mp4",
+    out_name="tennis_test",
+    teams_colors=['white', 'white', 'blue', 'blue', 'black', 'yellow'],
+    ball_only=True,
+    step_factor=0.8,
+    min_width=320,
+    test_percentage=90.0,              # Test 90% of resolutions
+    prefer_higher_resolution=True      # Focus on higher quality
+)
+
+# Generate both reports
+optimizer.generate_performance_report(save_path="./Out/optimization_report.txt")
+optimizer.plot_performance_analysis(save_path="./Out/performance_plots.png")
+optimizer.plot_comprehensive_timing_analysis(save_path="./Out/timing_analysis.png")
+```
+
+<div align="center">
+<img src="./readme_photos/timing_analysis.png" alt="Resolution Optimization Results" width="500"/>
+</div>
+
+The optimizer will save a detailed report and performance plots in the `Out/` directory.
+
+---
+
+### ROI (Region of Interest) Optimization
+
+ROI optimization restricts detection and tracking to a region around a specific player, greatly improving speed while maintaining accuracy for the target. The ROI is dynamically updated using Kalman filter predictions and adapts its size based on the player's movement and bounding box size.
+
+**Example usage:**
+
+```python
+from Detect_and_Track.roi_main import run_roi_experiment
+
+success = run_roi_experiment(
+    video_path="./test_videos/melbourne2.mp4",
+    experiment_name="tennis_test_roi",
+    teams_colors=['white', 'white', 'red', 'red', 'black', 'yellow'],
+    target_player_id=2,
+    ball_only=False,
+    save_roi_images=True,      # Enable ROI image saving
+    roi_save_interval=15       # Save ROI image every 15 frames
+)
+```
+
+After running, ROI images will be saved in the `Out/tennis_test_roi_roi_images/` directory. 
+
+<div align="center">
+<img src="./readme_photos/ROI-collage.jpg" alt="ROI Collage Example" width="500"/>
+</div>
+
+*Example: Collage of 9 ROI images from different frames, showing how the ROI adapts to the player's position.*
+
+---
+
 
 ---
 
