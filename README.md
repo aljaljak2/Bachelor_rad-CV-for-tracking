@@ -109,12 +109,10 @@ success = run_roi_experiment(
 After running, ROI images will be saved in the `Out/tennis_test_roi_roi_images/` directory. 
 
 <div align="center">
-<img src="./readme_photos/ROI-collage.jpg" alt="ROI Collage Example" width="500"/>
+<img src="./readme_photos/ROI-collage.png" alt="ROI Collage Example" width="500"/>
 </div>
 
 *Example: Collage of 9 ROI images from different frames, showing how the ROI adapts to the player's position.*
-
----
 
 
 ---
