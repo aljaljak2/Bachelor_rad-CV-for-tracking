@@ -83,6 +83,7 @@ def trackingXl5(Yolo_model, ball_model, video_path):
         _, frame = vid.read()
         try:
             original_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            source_frame = original_frame
             original_frame = cv2.resize(original_frame, (1280,720)) 
             frames.append(original_frame) 
         except:
@@ -93,7 +94,17 @@ def trackingXl5(Yolo_model, ball_model, video_path):
         
         # Detection timing
         detection_start = time.time()
-        results = Yolo_model(original_frame) 
+        # Determine the smaller dimension of the current frame
+        frame_height, frame_width = source_frame.shape[:2]
+        imgsz = min(frame_width, frame_height)
+        # Pass imgsz/size to YOLO model if supported
+        try:
+            results = Yolo_model(original_frame, size=imgsz)
+        except TypeError:
+            # Fallback for models that do not accept 'size' argument
+            for i in range(3):
+                print("MODEL DO NOT ACCEPT THIS PARAMETER FOR SIZE\n")
+            results = Yolo_model(original_frame)
         pred_bbox = results.xyxy[0].tolist()
         bboxes = [np.array(box) for box in pred_bbox] 
         

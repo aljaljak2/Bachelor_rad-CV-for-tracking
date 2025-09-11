@@ -26,13 +26,17 @@ def get_video_tracks(video_path , out_name , ball_only = True):
          where y1, x1, y2, x2 are the coordinates of the box around the object
     '''
 
-    modelv5l, ball_modelv5l = yoloV5l()
+    import cv2
+    vid = cv2.VideoCapture(video_path)
+    width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vid.release()
+    imgsz = min(width, height)
+    modelv5l, ball_modelv5l = yoloV5l(imgsz=imgsz)
     iframes, itboxes, fps = trackingXl5(modelv5l, ball_modelv5l, video_path)
     ziframes, zitboxes = clean_tracks(iframes, itboxes, ball_only)
-   
     #make clean video
-    make_tracking_video(ziframes, zitboxes, f'./Out/{out_name}_out.mp4', fps, draw = False)
-
+    make_tracking_video(ziframes, zitboxes, f'./Out/{out_name}_out.mp4', fps, draw=False)
     return ziframes, zitboxes
 
 

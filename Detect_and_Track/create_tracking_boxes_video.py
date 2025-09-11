@@ -15,7 +15,12 @@ def create_tracking_boxes_video(video_path , out_name):
         the name to save the video with objects tracked with.  
     '''
 
-    modelv5l, ball_modelv5l = yoloV5l()
+    import cv2
+    vid = cv2.VideoCapture(video_path)
+    width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vid.release()
+    imgsz = min(width, height)
+    modelv5l, ball_modelv5l = yoloV5l(imgsz=imgsz)
     iframes, itboxes, fps = trackingXl5(modelv5l, ball_modelv5l, video_path)
-    
-    make_tracking_video(iframes, itboxes, f'./Out/{out_name}_out_tracked.mp4', fps, draw = True)
+    make_tracking_video(iframes, itboxes, f'./Out/{out_name}_out_tracked.mp4', fps, draw=True)

@@ -42,8 +42,15 @@ def create_tracking_video_and_init_data(video_path, out_name, teams_colors, ball
     # Ensure output directory exists
     os.makedirs('./Out', exist_ok=True)
     
+    import cv2
+    vid = cv2.VideoCapture(video_path)
+    width = int(vid.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vid.release()
+    imgsz = min(width, height)
     print("Loading YOLO models...")
-    modelv5l, ball_modelv5l = yoloV5l()
+    modelv5l, ball_modelv5l = yoloV5l(imgsz=imgsz)
+    print("IMGSZ:", modelv5l.imgsz)
     
     print("Processing video with tracking and timing...")
     # This is where all the timing measurements happen
