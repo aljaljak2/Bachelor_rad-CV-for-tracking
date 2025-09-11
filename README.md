@@ -61,15 +61,13 @@ from Time_Optimization.resolution_optimizer import ResolutionPerformanceOptimize
 
 optimizer = ResolutionPerformanceOptimizer(target_fps=30.0, min_detection_threshold=2)
 
-results = optimizer.optimize_resolution(
+results = optimizer.optimize_resolution_interactive(
     video_path="./test_videos/melbourne2.mp4",
-    out_name="tennis_test",
+    out_name="test name",
     teams_colors=['white', 'white', 'blue', 'blue', 'black', 'yellow'],
     ball_only=True,
-    step_factor=0.8,
-    min_width=320,
-    test_percentage=90.0,              # Test 90% of resolutions
-    prefer_higher_resolution=True      # Focus on higher quality
+    step_factor=0.8,  # 20% reduction each step
+    min_width=320     # Minimum width to generate
 )
 
 # Generate both reports
@@ -88,7 +86,7 @@ The optimizer will save a detailed report and performance plots in the `Out/` di
 
 ### ROI (Region of Interest) Optimization
 
-ROI optimization restricts detection and tracking to a region around a specific player, greatly improving speed while maintaining accuracy for the target. The ROI is dynamically updated using Kalman filter predictions and adapts its size based on the player's movement and bounding box size.
+ROI optimization restricts detection and tracking to a region around a specific player, greatly improving speed while maintaining accuracy for the target. The ROI is dynamically updated based on the last detected position and size of the tracked player. The system always selects the detection closest to the previous position, adapts the ROI size to the player's bounding box, and expands or resets the ROI if the player is lost, ensuring consistent and efficient single-player tracking without the need for a Kalman filter or Deep SORT.
 
 **Example usage:**
 
@@ -113,7 +111,6 @@ After running, ROI images will be saved in the `Out/tennis_test_roi_roi_images/`
 </div>
 
 *Example: Collage of 9 ROI images from different frames, showing how the ROI adapts to the player's position.*
-
 
 ---
 
