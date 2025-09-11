@@ -14,23 +14,22 @@ from .generate_detections import create_box_encoder
 YOLO_COCO_CLASSES = "./Detect_and_Track/model_data/coco/coco.names"
 
 def trackingXl5_ROI_single_player(Yolo_model, ball_model, video_path, target_player_id=1,
-                                  save_roi_images=False, roi_save_interval=15,
-                                 experiment_name="roi_experiment"):
+                                     save_roi_images=False, roi_save_interval=15,
+                                     experiment_name="simple_roi_experiment"):
     '''
-    Enhanced ROI tracking that optimizes both detection and tracking steps.
-    Tracks only one specific player using Kalman filter predictions with full ROI optimization.
-    Ball detection and tracking are EXCLUDED for fair comparison with standard approach.
-
+    Simplified ROI-based detection that tracks a single player without DeepSORT.
+    Uses only YOLO detection within adaptive ROI regions.
+    
     Parameters
     ----------
     Yolo_model : pytorch model
         pytorch YoloV5l model.
     ball_model : pytorch model
-        pytorch YoloV5l model to detect the ball specifically (not used but kept for compatibility).
+        pytorch YoloV5l model (kept for compatibility, not used).
     video_path : string
         the path of the directory of the processed video.
     target_player_id : int
-        ID of the player to track with ROI (default: 1)
+        ID to assign to the tracked player (default: 1)
     save_roi_images : bool
         Whether to save ROI images during tracking (default: False)
     roi_save_interval : int
@@ -41,22 +40,12 @@ def trackingXl5_ROI_single_player(Yolo_model, ball_model, video_path, target_pla
     Return
     ----------
     frames : list
-        list of frames of the video with objects tracked.
+        list of frames of the video.
     tboxes : list
-        list of every object tracked in every frame.
+        list of detected objects in each frame.
     fps : int
         number of frames per second used in processing
     '''
-
-    # Definition of the parameters
-    max_cosine_distance = 0.7
-    nn_budget = None
-
-    # Initialize deep sort object
-    model_filename = './Detect_and_Track/model_data/mars-small128.pb'
-    encoder = create_box_encoder(model_filename, batch_size=1)
-    metric = NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
-    tracker = Tracker(metric)
 
     if video_path:
         vid = cv2.VideoCapture(video_path)
@@ -64,21 +53,24 @@ def trackingXl5_ROI_single_player(Yolo_model, ball_model, video_path, target_pla
     fps = int(vid.get(cv2.CAP_PROP_FPS))
     print(f'fps of the input video = {fps}')
     print('Please wait ... \n')
+    
     NUM_CLASS = read_class_names(YOLO_COCO_CLASSES)
-    key_list = list(NUM_CLASS.keys())
-    val_list = list(NUM_CLASS.values())
 
     frames = []
     tboxes = []
 
-    # ROI tracking variables
-    target_track = None
+    # Simple ROI tracking variables
     roi_active = False
     roi_frames_used = 0
-    first_frame_processed = False
-    # For adaptive ROI
-    next_roi_coords = None  # ROI to use for the next frame
-    prev_center = None  # For movement-based margin
+    last_detection = None  # Store last known player position
+    roi_coords = None      # Current ROI coordinates
+    consecutive_misses = 0 # Count frames without detection
+    max_misses = 10        # Max frames before expanding search
+
+    # ROI parameters
+    roi_expansion_factor = 1.5  # How much to expand ROI when player lost
+    min_roi_size = 100         # Minimum ROI dimension
+    max_roi_size = 400         # Maximum ROI dimension
 
     # Initialize timing variables
     frame_count = 0
@@ -93,7 +85,7 @@ def trackingXl5_ROI_single_player(Yolo_model, ball_model, video_path, target_pla
         os.makedirs(roi_images_dir, exist_ok=True)
 
     # Create CSV filename
-    csv_filename = f'./Out/roi_detailed_frame_timing_{int(time.time())}.csv'
+    csv_filename = f'./Out/simple_roi_detailed_timing_{int(time.time())}.csv'
 
     while True:
         # Start timing for this frame
@@ -113,9 +105,18 @@ def trackingXl5_ROI_single_player(Yolo_model, ball_model, video_path, target_pla
         # Detection timing
         detection_start = time.time()
 
-        # Use ROI from previous frame's prediction
-        if roi_active and next_roi_coords is not None:
-            x1, y1, x2, y2 = next_roi_coords
+        detected_player = None
+        
+        # Use ROI if we have a previous detection
+        if roi_active and roi_coords is not None:
+            x1, y1, x2, y2 = roi_coords
+            
+            # Ensure ROI is within frame bounds
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(1280, x2)
+            y2 = min(720, y2)
+            
             roi_frame = original_frame[y1:y2, x1:x2]
 
             # Save ROI image if requested
@@ -124,215 +125,166 @@ def trackingXl5_ROI_single_player(Yolo_model, ball_model, video_path, target_pla
                 cv2.imwrite(roi_image_path, cv2.cvtColor(roi_frame, cv2.COLOR_RGB2BGR))
 
             # Run detection on ROI
-            results = Yolo_model(roi_frame)
-            pred_bbox = results.xyxy[0].tolist()
+            try:
+                results = Yolo_model(roi_frame)
+                pred_bbox = results.xyxy[0].tolist()
 
-            # Adjust coordinates back to full frame
-            adjusted_bboxes = []
-            for box in pred_bbox:
-                adjusted_box = [
-                    box[0] + x1,  # x1
-                    box[1] + y1,  # y1
-                    box[2] + x1,  # x2
-                    box[3] + y1,  # y2
-                    box[4],       # confidence
-                    box[5]        # class
-                ]
-                adjusted_bboxes.append(adjusted_box)
+                # Find the best person detection in ROI
+                best_person = None
+                best_confidence = 0
+                
+                for box in pred_bbox:
+                    class_id = int(box[5])
+                    confidence = box[4]
+                    
+                    # Look for person class (class 0 in COCO)
+                    if class_id == 0 and confidence > best_confidence and confidence > 0.3:
+                        # Convert back to full frame coordinates
+                        detected_player = [
+                            int(box[0] + x1),  # x1
+                            int(box[1] + y1),  # y1
+                            int(box[2] + x1),  # x2
+                            int(box[3] + y1),  # y2
+                            target_player_id,   # assigned ID
+                            class_id           # class
+                        ]
+                        best_confidence = confidence
+                        best_person = detected_player
 
-            pred_bbox = adjusted_bboxes
-            bboxes = [np.array(box) for box in pred_bbox]
-            roi_frames_used += 1
+                if best_person:
+                    detected_player = best_person
+                    consecutive_misses = 0
+                    roi_frames_used += 1
+                    print(f"Frame {frame_count} - Player detected in ROI: ({x1},{y1}) to ({x2},{y2})")
+                else:
+                    consecutive_misses += 1
+                    print(f"Frame {frame_count} - No player in ROI, miss count: {consecutive_misses}")
 
-            print(f"Frame {frame_count} - Using ROI: ({x1},{y1}) to ({x2},{y2})")
+            except Exception as e:
+                print(f"Frame {frame_count} - ROI detection failed: {e}")
+                consecutive_misses += 1
 
-        else:
-            # First frame or when target is lost - process full frame
+        # If no ROI active or too many consecutive misses, search full frame
+        if not roi_active or consecutive_misses >= max_misses:
+            print(f"Frame {frame_count} - Searching full frame")
+            
             results = Yolo_model(original_frame)
             pred_bbox = results.xyxy[0].tolist()
-            bboxes = [np.array(box) for box in pred_bbox]
-            print(f"Frame {frame_count} - Processing full frame")
 
-        # Extract bboxes to boxes (x, y, width, height), scores and names
-        boxes, scores, names = [], [], []
-        for bbox in bboxes:
-            boxes.append([bbox[0].astype(int), bbox[1].astype(int),
-                         bbox[2].astype(int)-bbox[0].astype(int),
-                         bbox[3].astype(int)-bbox[1].astype(int)])
-            scores.append(bbox[4])
-            names.append(NUM_CLASS[int(bbox[5])])
+            # Find the best person detection in full frame
+            best_person = None
+            best_confidence = 0
+            
+            # If we had a previous detection, prefer detections close to it
+            for box in pred_bbox:
+                class_id = int(box[5])
+                confidence = box[4]
+                
+                if class_id == 0 and confidence > 0.3:  # Person class
+                    candidate = [
+                        int(box[0]),       # x1
+                        int(box[1]),       # y1
+                        int(box[2]),       # x2
+                        int(box[3]),       # y2
+                        target_player_id,  # assigned ID
+                        class_id          # class
+                    ]
+                    
+                    # Calculate score based on confidence and proximity to last detection
+                    score = confidence
+                    if last_detection is not None:
+                        # Calculate distance to last known position
+                        last_center_x = (last_detection[0] + last_detection[2]) / 2
+                        last_center_y = (last_detection[1] + last_detection[3]) / 2
+                        curr_center_x = (candidate[0] + candidate[2]) / 2
+                        curr_center_y = (candidate[1] + candidate[3]) / 2
+                        
+                        distance = np.sqrt((curr_center_x - last_center_x)**2 + 
+                                         (curr_center_y - last_center_y)**2)
+                        
+                        # Prefer closer detections (add proximity bonus)
+                        proximity_bonus = max(0, 1 - distance / 300)  # Normalize by max expected distance
+                        score = confidence + 0.3 * proximity_bonus
+                    
+                    if score > best_confidence:
+                        best_confidence = score
+                        best_person = candidate
+
+            if best_person:
+                detected_player = best_person
+                consecutive_misses = 0
+                roi_active = True
+                print(f"Frame {frame_count} - Player detected in full frame, activating ROI")
+            else:
+                consecutive_misses += 1
+                print(f"Frame {frame_count} - No player detected anywhere")
 
         detection_end = time.time()
 
-        # Tracking timing
-        tracking_start = time.time()
-
-        # ROI-optimized feature extraction
-        if roi_active and next_roi_coords is not None and len(boxes) > 0:
-            x1, y1, x2, y2 = next_roi_coords
-            roi_frame_for_features = original_frame[y1:y2, x1:x2]
-
-            # Adjust box coordinates relative to ROI for feature extraction
-            roi_boxes = []
-            valid_indices = []
-            for i, box in enumerate(boxes):
-                roi_x = max(0, box[0] - x1)
-                roi_y = max(0, box[1] - y1)
-                roi_w = min(x2 - x1 - roi_x, box[2])
-                roi_h = min(y2 - y1 - roi_y, box[3])
-                if roi_w > 10 and roi_h > 10:
-                    roi_boxes.append([roi_x, roi_y, roi_w, roi_h])
-                    valid_indices.append(i)
-                else:
-                    roi_boxes.append([1, 1, 10, 10]) # Fallback for tiny boxes, ensures encoder doesn't error
-                    valid_indices.append(i)
-            try:
-                if len(roi_boxes) > 0:
-                    features = np.array(encoder(roi_frame_for_features, roi_boxes))
-                    print(f"Frame {frame_count} - ROI feature extraction: {len(roi_boxes)} boxes")
-                else:
-                    features = np.array([])
-            except Exception as e:
-                print(f"Frame {frame_count} - ROI feature extraction failed: {e}")
-                features = np.array(encoder(original_frame, boxes))
-                print(f"Frame {frame_count} - Fallback to full frame feature extraction")
+        # Update ROI for next frame based on current detection
+        if detected_player is not None:
+            last_detection = detected_player
+            
+            # Calculate ROI for next frame
+            player_width = detected_player[2] - detected_player[0]
+            player_height = detected_player[3] - detected_player[1]
+            center_x = (detected_player[0] + detected_player[2]) / 2
+            center_y = (detected_player[1] + detected_player[3]) / 2
+            
+            # Adaptive ROI size based on player size
+            roi_width = max(min_roi_size, min(max_roi_size, int(player_width * 2.5)))
+            roi_height = max(min_roi_size, min(max_roi_size, int(player_height * 2.5)))
+            
+            # Calculate ROI coordinates
+            x1 = int(center_x - roi_width / 2)
+            y1 = int(center_y - roi_height / 2)
+            x2 = int(center_x + roi_width / 2)
+            y2 = int(center_y + roi_height / 2)
+            
+            roi_coords = (x1, y1, x2, y2)
+            
+        elif consecutive_misses < max_misses and roi_coords is not None:
+            # Expand ROI when player is temporarily lost
+            x1, y1, x2, y2 = roi_coords
+            expand_w = int((x2 - x1) * 0.2)  # Expand by 20%
+            expand_h = int((y2 - y1) * 0.2)
+            
+            roi_coords = (x1 - expand_w, y1 - expand_h, x2 + expand_w, y2 + expand_h)
         else:
-            features = np.array(encoder(original_frame, boxes))
-
-        # Filter out ball detections (same as standard approach for fair comparison)
-        non_ball_detections_indices = [i for i, name in enumerate(names) if name != 'sports ball']
-        filtered_boxes = [boxes[i] for i in non_ball_detections_indices]
-        filtered_scores = [scores[i] for i in non_ball_detections_indices]
-        filtered_names = [names[i] for i in non_ball_detections_indices]
-        filtered_features = [features[i] for i in non_ball_detections_indices]
-
-        # Create detections (excluding ball)
-        detections = [Detection(bbox, score, class_name, feature)
-                     for bbox, score, class_name, feature in zip(filtered_boxes, filtered_scores, filtered_names, filtered_features)]
-
-        # ROI-optimized tracking prediction and update
-        tracker.predict()
-
-        # Filter detections for ROI tracking optimization
-        if roi_active and target_track is not None and next_roi_coords is not None:
-            relevant_detections = []
-            x1, y1, x2, y2 = next_roi_coords
-            for detection in detections:
-                det_bbox = detection.to_tlbr()
-                overlap_x1 = max(det_bbox[0], x1)
-                overlap_y1 = max(det_bbox[1], y1)
-                overlap_x2 = min(det_bbox[2], x2)
-                overlap_y2 = min(det_bbox[3], y2)
-                overlap_area = max(0, overlap_x2 - overlap_x1) * max(0, overlap_y2 - overlap_y1)
-                det_area = (det_bbox[2] - det_bbox[0]) * (det_bbox[3] - det_bbox[1])
-                # Only include detections with significant overlap (excluding ball explicitly)
-                if overlap_area > 0.2 * det_area:
-                    relevant_detections.append(detection)
-            tracker.update(relevant_detections)
-            print(f"Frame {frame_count} - ROI tracking: {len(relevant_detections)}/{len(detections)} detections processed (excluding ball)")
-        else:
-            tracker.update(detections)
-
-        # Obtain info from the tracks
-        tracked_bboxes = []
-        current_target_found = False
-
-        for track in tracker.tracks:
-            if not track.is_confirmed() or track.time_since_update > 5:
-                continue
-
-            bbox = track.to_tlbr()
-            class_name = track.get_class()
-            tracking_id = track.track_id
-            index = key_list[val_list.index(class_name)]
-
-            # Exclude ball (class index 32) from being added to tracked_bboxes
-            if index == 32:
-                continue
-
-            # Check if this is our target player
-            if tracking_id == target_player_id and not first_frame_processed:
-                target_track = track
-                roi_active = True
-                first_frame_processed = True
-                current_target_found = True
-                print(f"Frame {frame_count} - Target player {target_player_id} locked for ROI tracking")
-            elif roi_active and track == target_track:
-                current_target_found = True
-
-            # Only track the target player (same as standard approach for fair comparison)
-            if target_track is not None and track == target_track:
-                tracked_bboxes.append(bbox.tolist() + [tracking_id, index])
-
-        # After processing tracks, set up ROI for next frame using Kalman prediction
-        if roi_active and target_track is not None:
-            predicted_bbox = target_track.to_tlbr()
-            obj_width = predicted_bbox[2] - predicted_bbox[0]
-            obj_height = predicted_bbox[3] - predicted_bbox[1]
-            obj_size = max(obj_width, obj_height)
-            center_x = (predicted_bbox[0] + predicted_bbox[2]) / 2
-            center_y = (predicted_bbox[1] + predicted_bbox[3]) / 2
-            # Calculate movement (Euclidean distance) from previous center
-            if prev_center is not None:
-                movement = np.linalg.norm(np.array([center_x, center_y]) - np.array(prev_center))
-            else:
-                movement = 0
-            # Adaptive margins based on object size and movement
-            min_margin = int(0.2 * obj_size + 0.5 * movement)
-            max_margin = int(1.0 * obj_size + 1.0 * movement)
-            # Use a margin between min and max (e.g., average)
-            margin = int(0.5 * (min_margin + max_margin))
-            x1 = max(0, int(predicted_bbox[0] - margin))
-            y1 = max(0, int(predicted_bbox[1] - margin))
-            x2 = min(1280, int(predicted_bbox[2] + margin))
-            y2 = min(720, int(predicted_bbox[3] + margin))
-            next_roi_coords = (x1, y1, x2, y2)
-            prev_center = (center_x, center_y)
-        else:
-            next_roi_coords = None
-            prev_center = None
-
-        # If target is lost, disable ROI and fall back to full frame
-        if roi_active and not current_target_found:
-            print(f"Frame {frame_count} - Target player lost, switching back to full frame")
+            # Lost player for too long, disable ROI
             roi_active = False
-            target_track = None
-            next_roi_coords = None
+            roi_coords = None
 
-        # Ball detection is EXCLUDED (same as standard approach for fair comparison)
-        # Removed the entire ball detection block here for fair comparison
-
-        tboxes.append([[round(bb) for bb in tracked_bbox] for tracked_bbox in tracked_bboxes])
-
-        tracking_end = time.time()
+        # Prepare output for this frame
+        frame_detections = []
+        if detected_player is not None:
+            frame_detections.append(detected_player)
+        
+        tboxes.append(frame_detections)
 
         # End timing for this frame
         frame_end_time = time.time()
         total_processing_time = frame_end_time - frame_start_time
         detection_time = detection_end - detection_start
-        tracking_time = tracking_end - tracking_start
-        complete_detection_tracking_time = detection_time + tracking_time
 
         print(f"Frame {frame_count} - Completed at: {frame_end_time:.6f}")
         print(f"Frame {frame_count} - Total time: {total_processing_time:.6f}s "
-              f"(Detection: {detection_time:.6f}s, Tracking: {tracking_time:.6f}s, "
-              f"Detection+Tracking: {complete_detection_tracking_time:.6f}s)")
+              f"(Detection: {detection_time:.6f}s)")
 
-        # Store timing data with ROI optimization indicator
+        # Store timing data
         timing_data.append([frame_count, frame_start_time, frame_end_time,
-                           detection_time, tracking_time, complete_detection_tracking_time,
-                           total_processing_time, roi_active])
+                           detection_time, total_processing_time, roi_active,
+                           consecutive_misses])
 
     # Write timing data to CSV
     with open(csv_filename, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Frame_Number', 'Start_Time (unix_timestamp)', 'End_Time (unix_timestamp)',
-                        'Detection_Time (s)', 'Tracking_Time (s)', 'Complete_Detection_Tracking_Time (s)',
-                        'Total_Processing_Time (s)', 'ROI_Active'])
+        writer.writerow(['Frame_Number', 'Start_Time', 'End_Time',
+                        'Detection_Time', 'Total_Time', 'ROI_Active', 'Consecutive_Misses'])
         writer.writerows(timing_data)
 
     print(f"\nDetailed timing data saved to: {csv_filename}")
-    print(f'Tracked {len(frames)} frames')
+    print(f'Processed {len(frames)} frames')
     print(f'ROI was used for {roi_frames_used} frames out of {len(frames)} total frames')
 
     return frames, tboxes, fps

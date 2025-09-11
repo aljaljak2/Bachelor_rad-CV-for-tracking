@@ -1,20 +1,21 @@
 from Detect_and_Track.roi_main import *
 
 video_path="./test_videos/melbourne2.mp4"
-experiment_name="tennis_test"
+experiment_name="tennis_test_ROI_only"
 
 
 success = run_fair_roi_experiment(
-    video_path="./test_videos/melbourne2.mp4",
-    experiment_name="tennis_test",
+    video_path="./test_videos/new_york2025.mp4",
+    experiment_name="YanCarlos_ROI_test",
     teams_colors=['white', 'white', 'red', 'red', 'black', 'yellow'],
-    target_player_id=2,
+    target_player_id=1,
     ball_only=False,
     save_roi_images=True,      # Enable ROI image saving
     roi_save_interval=15         # Save every 30 frames
 )
 
 '''
+
 success1 = run_roi_only_experiment_fair(video_path, experiment_name, teams_colors=None, 
                            target_player_id=1, ball_only=False, save_roi_images=True, 
                            roi_save_interval=15)
